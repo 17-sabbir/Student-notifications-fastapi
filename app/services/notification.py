@@ -80,6 +80,7 @@ class NotificationService:
                 device.fcm_token,
                 notification.title,
                 notification.body,
+                str(notification.id),
             )
             return read, success
 
@@ -195,7 +196,12 @@ class NotificationService:
                 continue
 
             print(f"[Notification] Sending FCM to device user_id={device.user_id} token={device.fcm_token[:20]}... notification={notification.id}")
-            success = await send_fcm_notification(device.fcm_token, notification.title, notification.body)
+            success = await send_fcm_notification(
+                device.fcm_token,
+                notification.title,
+                notification.body,
+                str(notification.id),
+            )
             if success:
                 read.last_notified_at = now
                 await db.commit()
