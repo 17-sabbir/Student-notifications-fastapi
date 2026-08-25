@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from typing import Optional
+import asyncio
 from sqlalchemy import select, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.notification import NotificationRead, Notification
@@ -63,6 +64,7 @@ class NotificationService:
             for fcm_token, user_id in ownership_result.fetchall():
                 token_owners.setdefault(fcm_token, set()).add(user_id)
 
+        eligible_rows = []
         sent_tokens = set()
         for read, device in rows:
             if len(token_owners.get(device.fcm_token, set())) != 1:
@@ -70,18 +72,35 @@ class NotificationService:
                 continue
             if device.fcm_token in sent_tokens:
                 continue
+            sent_tokens.add(device.fcm_token)
+            eligible_rows.append((read, device))
 
+        async def send_to_device(read, device):
             success = await send_fcm_notification(
                 device.fcm_token,
                 notification.title,
                 notification.body,
             )
-            if success:
-                sent_tokens.add(device.fcm_token)
-                read.last_notified_at = now
-                await db.commit()
+            return read, success
 
-        print(f"[Notification] Initially sent notification id={notification.id} to {len(sent_tokens)} devices")
+        results = await asyncio.gather(
+            *(send_to_device(read, device) for read, device in eligible_rows),
+            return_exceptions=True,
+        )
+        successful_sends = 0
+        for result in results:
+            if isinstance(result, Exception):
+                print(f"[Notification] Initial FCM send failed: {result}")
+                continue
+            read, success = result
+            if success:
+                read.last_notified_at = now
+                successful_sends += 1
+
+        if successful_sends:
+            await db.commit()
+
+        print(f"[Notification] Initially sent notification id={notification.id} to {successful_sends} devices")
 
     @staticmethod
     async def get_user_notifications(db: AsyncSession, user_id) -> list[dict]:

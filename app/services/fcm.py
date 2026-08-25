@@ -1,6 +1,7 @@
 import firebase_admin
 from firebase_admin import messaging
 from app.core.config import settings
+import asyncio
 
 
 async def send_fcm_notification(fcm_token: str, title: str, body: str):
@@ -21,7 +22,7 @@ async def send_fcm_notification(fcm_token: str, title: str, body: str):
             token=fcm_token,
         )
 
-        response = messaging.send(message)
+        response = await asyncio.to_thread(messaging.send, message)
         print(f"[FCM] Sent to {fcm_token[:20]}... message_id={response}")
         return True
     except Exception as e:
