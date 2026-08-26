@@ -11,9 +11,15 @@ async def send_fcm_notification(
     body: str,
     notification_id: str,
 ):
+    """Send an FCM notification.
+
+    Returns a tuple of (success, invalid_token).
+    success=True when Firebase accepted the message.
+    invalid_token=True when Firebase reported this token as no longer valid.
+    """
     if not settings.FIREBASE_CREDENTIALS_PATH:
         print("[FCM] Skipping send: FIREBASE_CREDENTIALS_PATH is not configured")
-        return False
+        return False, False
 
     try:
         if not firebase_admin._apps:
@@ -39,7 +45,16 @@ async def send_fcm_notification(
             "firebase_message_id": response,
             "token_prefix": fcm_token[:12],
         }))
-        return True
+        return True, False
+    except messaging.UnregisteredError as e:
+        print(json.dumps({
+            "event": "fcm_send_failed",
+            "notification_id": notification_id,
+            "token_prefix": fcm_token[:12],
+            "error": str(e),
+            "unregistered": True,
+        }))
+        return False, True
     except Exception as e:
         print(json.dumps({
             "event": "fcm_send_failed",
@@ -47,4 +62,4 @@ async def send_fcm_notification(
             "token_prefix": fcm_token[:12],
             "error": str(e),
         }))
-        return False
+        return False, False

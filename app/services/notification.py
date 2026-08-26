@@ -54,54 +54,48 @@ class NotificationService:
         rows = result.fetchall()
         print(f"[Notification] Sending initial notification id={notification.id} to {len(rows)} device rows")
 
-        candidate_tokens = {device.fcm_token for _, device in rows}
-        token_owners = {}
-        if candidate_tokens:
-            ownership_result = await db.execute(
-                select(DeviceToken.fcm_token, DeviceToken.user_id).where(
-                    DeviceToken.fcm_token.in_(candidate_tokens)
-                )
-            )
-            for fcm_token, user_id in ownership_result.fetchall():
-                token_owners.setdefault(fcm_token, set()).add(user_id)
-
         eligible_rows = []
         sent_tokens = set()
         for read, device in rows:
-            if len(token_owners.get(device.fcm_token, set())) != 1:
-                print(f"[Notification] Skipping ambiguous device token={device.fcm_token[:20]}...")
-                continue
             if device.fcm_token in sent_tokens:
                 continue
             sent_tokens.add(device.fcm_token)
             eligible_rows.append((read, device))
 
+        semaphore = asyncio.Semaphore(settings.FCM_SEND_CONCURRENCY)
+
         async def send_to_device(read, device):
-            success = await send_fcm_notification(
-                device.fcm_token,
-                notification.title,
-                notification.body,
-                str(notification.id),
-            )
-            return read, success
+            async with semaphore:
+                success, invalid_token = await send_fcm_notification(
+                    device.fcm_token,
+                    notification.title,
+                    notification.body,
+                    str(notification.id),
+                )
+                return read, device, success, invalid_token
 
         results = await asyncio.gather(
             *(send_to_device(read, device) for read, device in eligible_rows),
             return_exceptions=True,
         )
         successful_sends = 0
-        attempted_sends = 0
+        touched = False
         for result in results:
             if isinstance(result, Exception):
                 print(f"[Notification] Initial FCM send failed: {result}")
                 continue
-            read, success = result
+            read, device, success, invalid_token = result
+            if invalid_token:
+                print(f"[Notification] Deleting unregistered token={device.fcm_token[:20]}... user_id={device.user_id}")
+                await db.delete(device)
+                touched = True
+                continue
             read.last_notified_at = now
-            attempted_sends += 1
+            touched = True
             if success:
                 successful_sends += 1
 
-        if attempted_sends:
+        if touched:
             await db.commit()
 
         print(f"[Notification] Initially sent notification id={notification.id} to {successful_sends} devices")
@@ -171,46 +165,41 @@ class NotificationService:
         rows = result.fetchall()
         print(f"[Notification] Found {len(rows)} unread notification-device pairs to re-notify")
 
-        candidate_tokens = {device.fcm_token for _, _, device in rows}
-        token_owners = {}
-        if candidate_tokens:
-            ownership_result = await db.execute(
-                select(DeviceToken.fcm_token, DeviceToken.user_id).where(
-                    DeviceToken.fcm_token.in_(candidate_tokens)
-                )
-            )
-            for fcm_token, user_id in ownership_result.fetchall():
-                token_owners.setdefault(fcm_token, set()).add(user_id)
-
         count = 0
-        processed_pairs = set()
-        for read, notification, device in rows:
-            if len(token_owners.get(device.fcm_token, set())) != 1:
-                print(f"[Notification] Skipping ambiguous device token={device.fcm_token[:20]}...")
-                continue
+        touched = False
+        semaphore = asyncio.Semaphore(settings.FCM_SEND_CONCURRENCY)
 
-            pair = (str(notification.id), device.fcm_token)
-            if pair in processed_pairs:
-                continue
-            processed_pairs.add(pair)
+        async def send_and_maybe_cleanup(read, notification, device):
+            async with semaphore:
+                success, invalid_token = await send_fcm_notification(
+                    device.fcm_token,
+                    notification.title,
+                    notification.body,
+                    str(notification.id),
+                )
+            return read, device, success, invalid_token
 
-            await db.refresh(read)
-            if read.is_read:
-                print(f"[Notification] Skipping read notification user_id={read.user_id} notification={notification.id}")
+        results = await asyncio.gather(
+            *(send_and_maybe_cleanup(read, notification, device) for read, notification, device in rows),
+            return_exceptions=True,
+        )
+        for result in results:
+            if isinstance(result, Exception):
+                print(f"[Notification] Re-notify FCM send failed: {result}")
                 continue
-
-            print(f"[Notification] Sending FCM to device user_id={device.user_id} token={device.fcm_token[:20]}... notification={notification.id}")
-            success = await send_fcm_notification(
-                device.fcm_token,
-                notification.title,
-                notification.body,
-                str(notification.id),
-            )
+            read, device, success, invalid_token = result
+            if invalid_token:
+                print(f"[Notification] Deleting unregistered token={device.fcm_token[:20]}... user_id={device.user_id}")
+                await db.delete(device)
+                touched = True
+                continue
             read.last_notified_at = now
-            await db.commit()
+            touched = True
             if success:
                 count += 1
                 print(f"[Notification] Successfully re-notified device user_id={device.user_id}")
-            else:
-                print(f"[Notification] Failed to re-notify device user_id={device.user_id}")
+
+        if touched:
+            await db.commit()
+
         print(f"[Notification] Re-notified {count} unread notifications")
