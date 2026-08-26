@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.notification import NotificationRead, Notification
 from app.models.device_token import DeviceToken
 from app.models.user import User
+from app.core.config import settings
 from app.services.fcm import send_fcm_notification
 
 
@@ -89,16 +90,18 @@ class NotificationService:
             return_exceptions=True,
         )
         successful_sends = 0
+        attempted_sends = 0
         for result in results:
             if isinstance(result, Exception):
                 print(f"[Notification] Initial FCM send failed: {result}")
                 continue
             read, success = result
+            read.last_notified_at = now
+            attempted_sends += 1
             if success:
-                read.last_notified_at = now
                 successful_sends += 1
 
-        if successful_sends:
+        if attempted_sends:
             await db.commit()
 
         print(f"[Notification] Initially sent notification id={notification.id} to {successful_sends} devices")
@@ -160,7 +163,8 @@ class NotificationService:
                 User.role != "admin",
                 or_(
                     NotificationRead.last_notified_at.is_(None),
-                    NotificationRead.last_notified_at < now - timedelta(minutes=1),
+                    NotificationRead.last_notified_at
+                    < now - timedelta(minutes=settings.NOTIFICATION_RENOTIFY_INTERVAL_MINUTES),
                 ),
             )
         )
@@ -202,9 +206,9 @@ class NotificationService:
                 notification.body,
                 str(notification.id),
             )
+            read.last_notified_at = now
+            await db.commit()
             if success:
-                read.last_notified_at = now
-                await db.commit()
                 count += 1
                 print(f"[Notification] Successfully re-notified device user_id={device.user_id}")
             else:
