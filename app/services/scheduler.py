@@ -4,6 +4,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.services.notification import NotificationService
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
@@ -12,11 +13,10 @@ scheduler = AsyncIOScheduler(max_instances=1, coalesce=True)
 
 async def _run_with_advisory_lock(session_factory, coroutine):
     lock_id = 0x5FCEA9D2
-    token = uuid.uuid4().int & 0x7FFFFFFFFFFFFFFF
     async with session_factory() as db:
         try:
             result = await db.execute(
-                "SELECT pg_try_advisory_xact_lock(:lock_id)",
+                text("SELECT pg_try_advisory_xact_lock(:lock_id)"),
                 {"lock_id": lock_id},
             )
             acquired = result.scalar()
