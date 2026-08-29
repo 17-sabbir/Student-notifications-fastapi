@@ -1,12 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from typing import Optional
 from app.db.session import get_db
 from app.models.user import User
 from app.models.notification import Notification, NotificationRead
-from app.schemas.notification import NotificationCreate, NotificationResponse
+from app.schemas.notification import (
+    AdminNotificationDetail,
+    AdminNotificationSummary,
+    AdminNotificationUser,
+    NotificationCreate,
+    NotificationResponse,
+)
 from app.schemas.user import (
     AdminCreateResponse,
     AdminCreateSchema,
@@ -161,7 +167,7 @@ async def verify_admin(
     return RoleUpdateResponse(id=str(user.id), email=user.email, role=user.role)
 
 
-@router.get("/notifications", response_model=list[NotificationResponse])
+@router.get("/notifications", response_model=list[AdminNotificationSummary])
 async def list_all_notifications(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -169,21 +175,48 @@ async def list_all_notifications(
     db: AsyncSession = Depends(get_db),
 ):
     print(f"[Admin] Listing all notifications limit={limit} offset={offset} admin_id={current_user.id}")
-    result = await db.execute(
-        select(Notification)
-        .order_by(desc(Notification.created_at))
-        .limit(limit)
-        .offset(offset)
-    )
-    notifications = result.scalars().all()
+    notifications = await NotificationService.list_notifications_with_stats(db, limit, offset)
     print(f"[Admin] Found {len(notifications)} notifications")
-    return [
-        NotificationResponse(
-            id=str(n.id),
-            title=n.title,
-            body=n.body,
-            is_global=n.is_global,
-            created_at=n.created_at.isoformat(),
-        )
-        for n in notifications
-    ]
+    return [AdminNotificationSummary(**n) for n in notifications]
+
+
+@router.get("/notifications/{notification_id}", response_model=AdminNotificationDetail)
+async def get_notification_detail(
+    notification_id: str,
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    print(f"[Admin] Notification detail notification_id={notification_id} admin_id={current_user.id}")
+    notification = await NotificationService.get_notification_with_stats(db, notification_id)
+    if not notification:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
+    return AdminNotificationDetail(**notification)
+
+
+@router.get("/notifications/{notification_id}/users", response_model=list[AdminNotificationUser])
+async def get_notification_recipients(
+    notification_id: str,
+    status_filter: Optional[str] = Query(None, pattern="^(read|unread|all)$", alias="status"),
+    search: Optional[str] = Query(None, min_length=1, max_length=255),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    print(
+        f"[Admin] Notification recipients notification_id={notification_id} "
+        f"status={status_filter} search='{search}' admin_id={current_user.id}"
+    )
+    exists = await NotificationService.get_notification_with_stats(db, notification_id)
+    if not exists:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
+    recipients = await NotificationService.get_notification_recipients(
+        db,
+        notification_id,
+        status=status_filter,
+        search=search,
+        limit=limit,
+        offset=offset,
+    )
+    print(f"[Admin] Returning {len(recipients)} recipients for notification_id={notification_id}")
+    return [AdminNotificationUser(**r) for r in recipients]

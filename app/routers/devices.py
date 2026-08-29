@@ -11,6 +11,30 @@ from app.core.jwt import get_current_user
 router = APIRouter()
 
 
+@router.get("/")
+async def list_devices(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    print(f"[Router] GET /devices/ user_id={current_user.id}")
+    result = await db.execute(
+        select(DeviceToken)
+        .where(DeviceToken.user_id == current_user.id)
+        .order_by(DeviceToken.last_seen_at.desc().nulls_last())
+    )
+    devices = result.scalars().all()
+    print(f"[Router] Returning {len(devices)} devices for user_id={current_user.id}")
+    return [
+        {
+            "device_id": device.device_id,
+            "platform": device.platform,
+            "last_seen_at": device.last_seen_at.isoformat() if device.last_seen_at else None,
+            "created_at": device.created_at.isoformat() if device.created_at else None,
+        }
+        for device in devices
+    ]
+
+
 @router.post("/register")
 async def register_device(
     data: DeviceTokenCreate,

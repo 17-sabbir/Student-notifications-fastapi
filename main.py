@@ -21,7 +21,7 @@ app = FastAPI(
     title="Student Notifications API",
     description="FastAPI backend for student notification system",
     version="1.0.0",
-    root_path="/notifications",
+    root_path=settings.API_ROOT_PATH,
     lifespan=lifespan,
 )
 

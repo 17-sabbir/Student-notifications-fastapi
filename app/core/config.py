@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     FIREBASE_CREDENTIALS_PATH: str = "firebase-service-account.json"
     FIREBASE_PROJECT_ID: str = "notifications-app-b29a7"
 
+    API_ROOT_PATH: str = ""
+
     CORS_ORIGINS: str
     RATE_LIMIT_AUTH: str = "5/minute"
     RATE_LIMIT_OTP: str = "5/15minutes"

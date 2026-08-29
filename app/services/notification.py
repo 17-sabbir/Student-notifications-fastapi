@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Optional
 import asyncio
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_, or_, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.notification import NotificationRead, Notification
 from app.models.device_token import DeviceToken
@@ -141,6 +141,104 @@ class NotificationService:
         await db.commit()
         print(f"[Notification] Marked as read notification_id={notification_id} user_id={user_id}")
         return read
+
+    @staticmethod
+    async def list_notifications_with_stats(
+        db: AsyncSession, limit: int, offset: int
+    ) -> list[dict]:
+        read_count_expr = func.coalesce(
+            func.sum(case((NotificationRead.is_read.is_(True), 1), else_=0)), 0
+        )
+        result = await db.execute(
+            select(
+                Notification,
+                func.count(NotificationRead.id).label("total"),
+                read_count_expr.label("read_count"),
+            )
+            .outerjoin(NotificationRead, NotificationRead.notification_id == Notification.id)
+            .group_by(Notification.id)
+            .order_by(Notification.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        rows = result.all()
+        notifications = []
+        for notification, total, read_count in rows:
+            notifications.append(
+                {
+                    "id": str(notification.id),
+                    "title": notification.title,
+                    "body": notification.body,
+                    "created_at": notification.created_at.isoformat(),
+                    "total_recipients": total,
+                    "read_count": read_count,
+                    "unread_count": total - read_count,
+                }
+            )
+        return notifications
+
+    @staticmethod
+    async def get_notification_with_stats(db: AsyncSession, notification_id: str) -> Optional[dict]:
+        result = await db.execute(select(Notification).where(Notification.id == notification_id))
+        notification = result.scalar_one_or_none()
+        if not notification:
+            return None
+
+        read_count_expr = func.coalesce(
+            func.sum(case((NotificationRead.is_read.is_(True), 1), else_=0)), 0
+        )
+        result = await db.execute(
+            select(func.count(NotificationRead.id), read_count_expr).where(
+                NotificationRead.notification_id == notification_id
+            )
+        )
+        total, read_count = result.one()
+        return {
+            "id": str(notification.id),
+            "title": notification.title,
+            "body": notification.body,
+            "created_at": notification.created_at.isoformat(),
+            "total_recipients": total,
+            "read_count": read_count,
+            "unread_count": total - read_count,
+        }
+
+    @staticmethod
+    async def get_notification_recipients(
+        db: AsyncSession,
+        notification_id: str,
+        status: Optional[str] = None,
+        search: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        query = (
+            select(NotificationRead, User)
+            .join(User, User.id == NotificationRead.user_id)
+            .where(NotificationRead.notification_id == notification_id)
+        )
+        if status == "read":
+            query = query.where(NotificationRead.is_read.is_(True))
+        elif status == "unread":
+            query = query.where(NotificationRead.is_read.is_(False))
+        if search:
+            query = query.where(User.email.ilike(f"%{search}%"))
+        query = (
+            query.order_by(NotificationRead.read_at.desc().nulls_last(), User.email)
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await db.execute(query)
+        rows = result.fetchall()
+        return [
+            {
+                "user_id": str(user.id),
+                "email": user.email,
+                "is_read": read.is_read,
+                "read_at": read.read_at.isoformat() if read.read_at else None,
+            }
+            for read, user in rows
+        ]
 
     @staticmethod
     async def send_re_notifications(db: AsyncSession):

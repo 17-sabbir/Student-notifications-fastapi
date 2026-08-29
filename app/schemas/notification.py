@@ -30,3 +30,24 @@ class DeviceTokenCreate(BaseModel):
 
 class DeviceTokenUnregister(BaseModel):
     device_id: str = Field(..., min_length=1, max_length=255)
+
+
+class AdminNotificationSummary(BaseModel):
+    id: str
+    title: str
+    body: str
+    created_at: str
+    total_recipients: int
+    read_count: int
+    unread_count: int
+
+
+class AdminNotificationDetail(AdminNotificationSummary):
+    pass
+
+
+class AdminNotificationUser(BaseModel):
+    user_id: str
+    email: str
+    is_read: bool
+    read_at: Optional[str] = None
