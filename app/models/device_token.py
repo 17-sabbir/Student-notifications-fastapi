@@ -1,8 +1,8 @@
 import uuid
 import re
-from datetime import datetime
 from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
+from app.core.timezone import utc_now
 from app.db.session import Base
 
 
@@ -15,8 +15,8 @@ class DeviceToken(Base):
     fcm_token = Column(String(255), nullable=False, unique=True, index=True)
     platform = Column(String(20), nullable=False)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    last_seen_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+    last_seen_at = Column(DateTime, default=utc_now)
 
     user = relationship("User", back_populates="device_tokens")

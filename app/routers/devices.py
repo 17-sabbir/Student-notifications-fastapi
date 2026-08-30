@@ -7,6 +7,7 @@ from app.models.device_token import DeviceToken
 from app.schemas.notification import DeviceTokenCreate, DeviceTokenUnregister
 from app.services.auth import AuthService
 from app.core.jwt import get_current_user
+from app.core.timezone import to_bd_isoformat
 
 router = APIRouter()
 
@@ -28,8 +29,8 @@ async def list_devices(
         {
             "device_id": device.device_id,
             "platform": device.platform,
-            "last_seen_at": device.last_seen_at.isoformat() if device.last_seen_at else None,
-            "created_at": device.created_at.isoformat() if device.created_at else None,
+            "last_seen_at": to_bd_isoformat(device.last_seen_at),
+            "created_at": to_bd_isoformat(device.created_at),
         }
         for device in devices
     ]

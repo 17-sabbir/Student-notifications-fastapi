@@ -1,10 +1,10 @@
 import re
-from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, insert, update, delete
 from app.models.user import User
 from app.models.device_token import DeviceToken
 from app.core.security import get_password_hash
+from app.core.timezone import utc_now
 
 
 class AuthService:
@@ -35,7 +35,7 @@ class AuthService:
             device.user_id = user.id
             device.platform = platform
             device.device_id = device_id
-            device.last_seen_at = datetime.utcnow()
+            device.last_seen_at = utc_now()
             for duplicate in existing_devices[1:]:
                 await db.delete(duplicate)
             await db.commit()

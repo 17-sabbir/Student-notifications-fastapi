@@ -7,6 +7,7 @@ from app.models.notification import NotificationRead, Notification
 from app.models.device_token import DeviceToken
 from app.models.user import User
 from app.core.config import settings
+from app.core.timezone import utc_now, to_bd_isoformat
 from app.services.fcm import send_fcm_notification
 
 
@@ -27,8 +28,13 @@ class NotificationService:
         result = await db.execute(select(User.id).where(User.is_active == True, User.role != "admin"))
         user_ids = [row[0] for row in result.fetchall()]
         print(f"[Notification] Found {len(user_ids)} active non-admin users")
+        # Stamp last_notified_at at creation: the initial send runs right after
+        # this commit, so the rows must not look "never notified" (NULL) to the
+        # re-notify scheduler - it treats NULL as eligible and would re-send
+        # the brand-new notification during the initial send's window.
+        now = utc_now()
         for uid in user_ids:
-            db.add(NotificationRead(notification_id=notification.id, user_id=uid))
+            db.add(NotificationRead(notification_id=notification.id, user_id=uid, last_notified_at=now))
 
         await db.commit()
         await db.refresh(notification)
@@ -39,7 +45,7 @@ class NotificationService:
 
     @staticmethod
     async def send_initial_notification(db: AsyncSession, notification: Notification):
-        now = datetime.utcnow()
+        now = utc_now()
         result = await db.execute(
             select(NotificationRead, DeviceToken)
             .join(DeviceToken, DeviceToken.user_id == NotificationRead.user_id)
@@ -116,10 +122,10 @@ class NotificationService:
                 "title": notification.title,
                 "body": notification.body,
                 "is_global": notification.is_global,
-                "created_at": notification.created_at.isoformat(),
+                "created_at": to_bd_isoformat(notification.created_at),
                 "is_read": read.is_read,
-                "read_at": read.read_at.isoformat() if read.read_at else None,
-                "last_notified_at": read.last_notified_at.isoformat() if read.last_notified_at else None,
+                "read_at": to_bd_isoformat(read.read_at),
+                "last_notified_at": to_bd_isoformat(read.last_notified_at),
             })
         print(f"[Notification] Returning {len(notifications)} notifications for user_id={user_id}")
         return notifications
@@ -137,7 +143,7 @@ class NotificationService:
             print(f"[Notification] NotificationRead not found for notification_id={notification_id} user_id={user_id}")
             return None
         read.is_read = True
-        read.read_at = datetime.utcnow()
+        read.read_at = utc_now()
         await db.commit()
         print(f"[Notification] Marked as read notification_id={notification_id} user_id={user_id}")
         return read
@@ -169,7 +175,7 @@ class NotificationService:
                     "id": str(notification.id),
                     "title": notification.title,
                     "body": notification.body,
-                    "created_at": notification.created_at.isoformat(),
+                    "created_at": to_bd_isoformat(notification.created_at),
                     "total_recipients": total,
                     "read_count": read_count,
                     "unread_count": total - read_count,
@@ -197,7 +203,7 @@ class NotificationService:
             "id": str(notification.id),
             "title": notification.title,
             "body": notification.body,
-            "created_at": notification.created_at.isoformat(),
+            "created_at": to_bd_isoformat(notification.created_at),
             "total_recipients": total,
             "read_count": read_count,
             "unread_count": total - read_count,
@@ -235,14 +241,14 @@ class NotificationService:
                 "user_id": str(user.id),
                 "email": user.email,
                 "is_read": read.is_read,
-                "read_at": read.read_at.isoformat() if read.read_at else None,
+                "read_at": to_bd_isoformat(read.read_at),
             }
             for read, user in rows
         ]
 
     @staticmethod
     async def send_re_notifications(db: AsyncSession):
-        now = datetime.utcnow()
+        now = utc_now()
         print(f"[Notification] Checking unread notifications for re-notification at {now.isoformat()}")
         result = await db.execute(
             select(NotificationRead, Notification, DeviceToken)

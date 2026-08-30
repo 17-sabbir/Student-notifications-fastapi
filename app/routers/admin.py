@@ -23,6 +23,7 @@ from app.schemas.user import (
 from app.services.notification import NotificationService
 from app.services.firebase_auth import FirebaseAuthService
 from app.core.jwt import get_current_user
+from app.core.timezone import to_bd_isoformat
 
 router = APIRouter()
 
@@ -49,7 +50,7 @@ async def create_notification(
         title=notification.title,
         body=notification.body,
         is_global=notification.is_global,
-        created_at=notification.created_at.isoformat(),
+        created_at=to_bd_isoformat(notification.created_at),
     )
 
 

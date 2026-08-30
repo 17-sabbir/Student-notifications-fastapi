@@ -1,7 +1,7 @@
 import uuid
-from datetime import datetime
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Integer
 from sqlalchemy.orm import relationship
+from app.core.timezone import utc_now
 from app.db.session import Base
 
 
@@ -16,7 +16,7 @@ class User(Base):
     role = Column(String(20), default="user")
     failed_login_count = Column(Integer, default=0)
     locked_until = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
     notifications = relationship("Notification", back_populates="created_by_admin", foreign_keys="Notification.created_by_admin_id")
     notification_reads = relationship("NotificationRead", back_populates="user")

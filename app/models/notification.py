@@ -1,7 +1,7 @@
 import uuid
-from datetime import datetime
 from sqlalchemy import Column, String, Text, Boolean, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
+from app.core.timezone import utc_now
 from app.db.session import Base
 
 
@@ -13,7 +13,7 @@ class Notification(Base):
     body = Column(Text, nullable=False)
     created_by_admin_id = Column(String(36), ForeignKey("users.id"), nullable=False)
     is_global = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
     created_by_admin = relationship("User", foreign_keys=[created_by_admin_id], back_populates="notifications")
     reads = relationship("NotificationRead", back_populates="notification", cascade="all, delete-orphan")
