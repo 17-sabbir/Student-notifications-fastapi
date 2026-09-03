@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     RATE_LIMIT_AUTH: str = "5/minute"
     RATE_LIMIT_OTP: str = "5/15minutes"
     RATE_LIMIT_RESEND: str = "1/minute"
-    NOTIFICATION_RENOTIFY_INTERVAL_MINUTES: PositiveInt = 2
+    NOTIFICATION_RENOTIFY_INTERVAL_MINUTES: PositiveInt = 4
     NOTIFICATION_SCHEDULER_INTERVAL_SECONDS: PositiveInt = 10
     FCM_SEND_CONCURRENCY: PositiveInt = 20
 
