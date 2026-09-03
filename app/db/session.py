@@ -6,7 +6,12 @@ Base = declarative_base()
 
 from app.models import user, notification, device_token, refresh_token
 
-engine = create_async_engine(settings.database_url, echo=False, future=True)
+engine = create_async_engine(
+    settings.database_url,
+    echo=False,
+    future=True,
+    connect_args={"timeout": 10},
+)
 AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
