@@ -23,7 +23,11 @@ async def send_fcm_notification(
 
     try:
         if not firebase_admin._apps:
-            cred = firebase_admin.credentials.Certificate(settings.FIREBASE_CREDENTIALS_PATH)
+            cred_file = settings.firebase_credentials_file
+            if not cred_file.exists():
+                print(f"[FCM] Skipping send: {cred_file} not found")
+                return False, False
+            cred = firebase_admin.credentials.Certificate(str(cred_file))
             firebase_admin.initialize_app(cred)
 
         message = messaging.Message(

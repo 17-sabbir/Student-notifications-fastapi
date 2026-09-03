@@ -1,6 +1,9 @@
+from pathlib import Path
 from pydantic import PositiveInt
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from urllib.parse import quote_plus
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 
 class Settings(BaseSettings):
@@ -26,6 +29,11 @@ class Settings(BaseSettings):
     NOTIFICATION_SCHEDULER_INTERVAL_SECONDS: PositiveInt = 10
     FCM_SEND_CONCURRENCY: PositiveInt = 20
 
+
+    @property
+    def firebase_credentials_file(self) -> Path:
+        path = Path(self.FIREBASE_CREDENTIALS_PATH)
+        return path if path.is_absolute() else BASE_DIR / path
 
     @property
     def database_url(self) -> str:

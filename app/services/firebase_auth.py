@@ -9,7 +9,14 @@ import uuid
 
 
 if not firebase_admin._apps:
-    cred = credentials.Certificate(settings.FIREBASE_CREDENTIALS_PATH)
+    cred_file = settings.firebase_credentials_file
+    if not cred_file.exists():
+        raise RuntimeError(
+            f"Firebase service account file not found: {cred_file}. "
+            "Upload firebase-service-account.json to the backend root "
+            "or set FIREBASE_CREDENTIALS_PATH in .env."
+        )
+    cred = credentials.Certificate(str(cred_file))
     firebase_admin.initialize_app(cred)
 
 
