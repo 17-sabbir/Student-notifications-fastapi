@@ -35,6 +35,19 @@ async def send_fcm_notification(
                 title=title,
                 body=body,
             ),
+            android=messaging.AndroidConfig(
+                priority="high",
+                notification=messaging.AndroidNotification(
+                    channel_id="student_notifications_high_importance",
+                    sound="default",
+                    priority="high",
+                ),
+            ),
+            apns=messaging.APNSConfig(
+                payload=messaging.APNSPayload(
+                    aps=messaging.Aps(sound="default"),
+                ),
+            ),
             data={
                 "notification_id": notification_id,
                 "event": "student_notification",
